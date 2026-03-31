@@ -1,0 +1,33 @@
+{
+  "manifest_version": 3,
+  "name": "IsItDown — Site Outage Checker",
+  "version": "1.0.0",
+  "description": "One click: is this site down for everyone or just you? Find out in 3 seconds — right from the toolbar.",
+  "permissions": [
+    "storage",
+    "alarms",
+    "notifications",
+    "webNavigation",
+    "activeTab"
+  ],
+  "host_permissions": ["<all_urls>"],
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "assets/icons/icon16.png",
+      "48": "assets/icons/icon48.png",
+      "128": "assets/icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "assets/icons/icon16.png",
+    "48": "assets/icons/icon48.png",
+    "128": "assets/icons/icon128.png"
+  },
+  "background": {
+    "service_worker": "background/service-worker.js"
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'; base-uri 'self';"
+  }
+}
