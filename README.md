@@ -433,7 +433,9 @@ This project is licensed under the **MIT License** — you are free to use, modi
 
 <div align="center">
 
-**Built with ❤️ by [Jaswanth](https://github.com/Jaswanth-dev-69)**
+**Built with AI by [Jaswanth](https://github.com/Jaswanth-dev-69)**
+
+**Author:** Jaswanth
 
 ⭐ Star this repo if you find it useful!
 
