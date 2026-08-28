@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>IsItDown — Site Outage Checker</title>
+<meta name="description" content="A zero-backend Chrome extension that tells you in seconds whether a site is down for everyone or just you — dual-check engine, passive slow-page badge, recovery watcher, and a monitoring dashboard, all local to your browser.">
+<link rel="icon" type="image/svg+xml" href="assets/icons/icon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0b0d12;
+    --bg-alt:#11141c;
+    --card:#151924;
+    --card-border:#242938;
+    --text:#eef0f5;
+    --text-dim:#9aa2b4;
+    --text-faint:#5c6478;
+    --accent:#6366F1;
+    --accent-2:#818CF8;
+    --up:#34A853;
+    --down:#E24B4A;
+    --slow:#EF9F27;
+    --radius:14px;
+    --max:960px;
+  }
+  *{box-sizing:border-box;}
+  html{scroll-behavior:smooth;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--text);
+    font-family:'Inter',system-ui,-apple-system,sans-serif;
+    line-height:1.55;
+    -webkit-font-smoothing:antialiased;
+  }
+  a{color:var(--accent-2);}
+  .wrap{max-width:var(--max);margin:0 auto;padding:0 24px;}
+
+  /* background glow */
+  body::before{
+    content:"";
+    position:fixed;
+    inset:0;
+    background:
+      radial-gradient(600px 300px at 15% -5%, rgba(99,102,241,0.18), transparent 60%),
+      radial-gradient(500px 260px at 90% 10%, rgba(52,168,83,0.10), transparent 60%);
+    pointer-events:none;
+    z-index:0;
+  }
+
+  /* nav */
+  nav{
+    position:sticky; top:0; z-index:10;
+    backdrop-filter:blur(10px);
+    background:rgba(11,13,18,0.75);
+    border-bottom:1px solid var(--card-border);
+  }
+  nav .wrap{display:flex;align-items:center;justify-content:space-between;padding:14px 24px;}
+  .brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:15px;letter-spacing:-0.01em;}
+  .brand img{width:22px;height:22px;}
+  nav .links{display:flex;gap:22px;font-size:14px;color:var(--text-dim);}
+  nav .links a{color:var(--text-dim);text-decoration:none;transition:color .15s;}
+  nav .links a:hover{color:var(--text);}
+  .btn{
+    display:inline-flex;align-items:center;gap:8px;
+    background:var(--accent);
+    color:#fff;
+    font-weight:600;
+    font-size:14px;
+    padding:10px 18px;
+    border-radius:10px;
+    text-decoration:none;
+    border:1px solid rgba(255,255,255,0.08);
+    transition:transform .15s, background .15s, box-shadow .15s;
+    box-shadow:0 0 0 rgba(99,102,241,0);
+  }
+  .btn:hover{background:var(--accent-2); box-shadow:0 6px 24px rgba(99,102,241,0.35);}
+  .btn-ghost{
+    background:transparent;
+    border:1px solid var(--card-border);
+    color:var(--text);
+  }
+  .btn-ghost:hover{background:var(--bg-alt); box-shadow:none;}
+
+  main{position:relative;z-index:1;}
+
+  /* hero */
+  header.hero{padding:90px 0 70px;text-align:center;}
+  .kicker{
+    display:inline-flex;align-items:center;gap:8px;
+    font-size:12.5px; font-weight:600; letter-spacing:0.04em; text-transform:uppercase;
+    color:var(--accent-2);
+    background:rgba(99,102,241,0.10);
+    border:1px solid rgba(99,102,241,0.25);
+    padding:6px 14px;border-radius:999px;
+    margin-bottom:26px;
+  }
+  h1{
+    font-size:clamp(34px,5.4vw,58px);
+    font-weight:800;
+    letter-spacing:-0.03em;
+    margin:0 0 20px;
+    line-height:1.08;
+  }
+  h1 .grad{
+    background:linear-gradient(100deg,var(--accent-2),#a78bfa 60%, var(--accent));
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+  }
+  .lead{
+    max-width:620px;margin:0 auto 36px;
+    font-size:18px;color:var(--text-dim);
+  }
+  .hero-cta{display:flex;gap:14px;justify-content:center;flex-wrap:wrap;margin-bottom:56px;}
+  .badges{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;}
+  .pill{
+    font-size:12px;color:var(--text-faint);
+    border:1px solid var(--card-border);
+    padding:5px 12px;border-radius:999px;
+  }
+
+  /* mock popup preview */
+  .mock{
+    max-width:340px;margin:56px auto 0;
+    background:linear-gradient(180deg,#171b26,#12151e);
+    border:1px solid var(--card-border);
+    border-radius:20px;
+    padding:20px;
+    box-shadow:0 30px 80px -20px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.02) inset;
+    text-align:left;
+  }
+  .mock-head{display:flex;align-items:center;gap:9px;margin-bottom:14px;}
+  .mock-head img{width:20px;height:20px;}
+  .mock-head span{font-weight:700;font-size:14px;}
+  .mock-domain{
+    display:flex;align-items:center;gap:8px;
+    font-size:12.5px;color:var(--text-dim);
+    background:var(--bg-alt);
+    border:1px solid var(--card-border);
+    padding:8px 12px;border-radius:10px;
+    margin-bottom:14px;
+  }
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--up);box-shadow:0 0 8px var(--up);flex-shrink:0;}
+  .mock-verdict{
+    text-align:center;
+    background:radial-gradient(120px 80px at 50% 0%, rgba(52,168,83,0.15), transparent);
+    border:1px solid var(--card-border);
+    border-radius:14px;
+    padding:22px 16px 18px;
+    margin-bottom:14px;
+  }
+  .mock-verdict .icon{
+    width:44px;height:44px;border-radius:50%;
+    background:rgba(52,168,83,0.15);
+    color:var(--up);
+    display:flex;align-items:center;justify-content:center;
+    margin:0 auto 10px;
+  }
+  .mock-verdict .label{font-weight:700;font-size:16px;}
+  .mock-verdict .sub{font-size:12.5px;color:var(--text-dim);margin-top:3px;}
+  .mock-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;}
+  .mock-stat{
+    background:var(--bg-alt);border:1px solid var(--card-border);border-radius:10px;
+    padding:9px 6px;text-align:center;
+  }
+  .mock-stat .l{font-size:10px;color:var(--text-faint);text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px;}
+  .mock-stat .v{font-size:13px;font-weight:700;color:var(--up);}
+
+  /* sections */
+  section{padding:64px 0;border-top:1px solid var(--card-border);}
+  .section-head{max-width:640px;margin:0 auto 44px;text-align:center;}
+  .eyebrow{font-size:12.5px;font-weight:700;color:var(--accent-2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;}
+  h2{font-size:clamp(26px,3.4vw,36px);letter-spacing:-0.02em;margin:0 0 12px;}
+  .section-head p{color:var(--text-dim);font-size:16px;margin:0;}
+
+  /* what it does grid */
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;}
+  @media (max-width:820px){.grid{grid-template-columns:repeat(2,1fr);}}
+  @media (max-width:560px){.grid{grid-template-columns:1fr;}}
+  .card{
+    background:var(--card);
+    border:1px solid var(--card-border);
+    border-radius:var(--radius);
+    padding:22px;
+    transition:border-color .2s, transform .2s;
+  }
+  .card:hover{border-color:rgba(99,102,241,0.4); transform:translateY(-2px);}
+  .card .ic{
+    width:38px;height:38px;border-radius:10px;
+    display:flex;align-items:center;justify-content:center;
+    background:rgba(99,102,241,0.14);color:var(--accent-2);
+    margin-bottom:14px;
+  }
+  .card h3{font-size:15.5px;margin:0 0 8px;letter-spacing:-0.01em;}
+  .card p{font-size:13.8px;color:var(--text-dim);margin:0;}
+
+  /* how it works - flow */
+  .flow{
+    background:var(--card);
+    border:1px solid var(--card-border);
+    border-radius:var(--radius);
+    padding:30px;
+    max-width:760px;margin:0 auto 40px;
+  }
+  .flow-steps{display:flex;flex-direction:column;gap:0;}
+  .step{display:flex;gap:16px;padding:14px 0;position:relative;}
+  .step:not(:last-child)::after{
+    content:"";position:absolute;left:17px;top:44px;bottom:-14px;width:1px;
+    background:var(--card-border);
+  }
+  .step .num{
+    flex-shrink:0;width:36px;height:36px;border-radius:50%;
+    background:var(--bg-alt);border:1px solid var(--card-border);
+    display:flex;align-items:center;justify-content:center;
+    font-weight:700;font-size:13px;color:var(--accent-2);
+    z-index:1;
+  }
+  .step .body h4{margin:2px 0 5px;font-size:15px;}
+  .step .body p{margin:0;color:var(--text-dim);font-size:13.8px;}
+  .step code{
+    background:var(--bg-alt);border:1px solid var(--card-border);
+    padding:1px 6px;border-radius:6px;font-size:12.5px;color:var(--accent-2);
+  }
+
+  /* verdict table */
+  table{width:100%;border-collapse:collapse;font-size:13.8px;}
+  .tablewrap{
+    background:var(--card);border:1px solid var(--card-border);border-radius:var(--radius);
+    overflow:hidden; max-width:760px;margin:0 auto;
+  }
+  th,td{text-align:left;padding:12px 16px;border-bottom:1px solid var(--card-border);}
+  th{color:var(--text-faint);font-weight:600;text-transform:uppercase;font-size:11px;letter-spacing:.05em;background:var(--bg-alt);}
+  tr:last-child td{border-bottom:none;}
+  .tag{display:inline-block;padding:2px 9px;border-radius:6px;font-size:12px;font-weight:600;}
+  .tag-up{background:rgba(52,168,83,0.15);color:var(--up);}
+  .tag-down{background:rgba(226,75,74,0.15);color:var(--down);}
+  .tag-slow{background:rgba(239,159,39,0.15);color:var(--slow);}
+
+  /* why */
+  .why{display:grid;grid-template-columns:1fr 1fr;gap:18px;}
+  @media (max-width:700px){.why{grid-template-columns:1fr;}}
+  .why .card{background:linear-gradient(180deg,var(--card),var(--bg-alt));}
+
+  /* privacy */
+  .privacy-box{
+    max-width:760px;margin:0 auto;
+    display:flex; gap:16px; align-items:flex-start;
+    background:rgba(52,168,83,0.06);
+    border:1px solid rgba(52,168,83,0.25);
+    border-radius:var(--radius);
+    padding:22px 24px;
+  }
+  .privacy-box .ic{color:var(--up);flex-shrink:0;margin-top:2px;}
+  .privacy-box h4{margin:0 0 6px;font-size:15px;}
+  .privacy-box p{margin:0;color:var(--text-dim);font-size:13.8px;}
+
+  /* install */
+  .install-grid{max-width:760px;margin:0 auto;display:flex;flex-direction:column;gap:12px;}
+  .install-step{
+    display:flex;align-items:center;gap:14px;
+    background:var(--card);border:1px solid var(--card-border);
+    border-radius:12px;padding:16px 18px;font-size:14px;color:var(--text-dim);
+  }
+  .install-step b{color:var(--text);}
+  .install-step .num{
+    width:26px;height:26px;border-radius:7px;background:var(--bg-alt);
+    display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12.5px;color:var(--accent-2);
+    flex-shrink:0;
+  }
+
+  footer{padding:44px 0 60px;text-align:center;color:var(--text-faint);font-size:13px;border-top:1px solid var(--card-border);}
+  footer a{color:var(--text-dim);text-decoration:none;}
+  footer a:hover{color:var(--text);}
+  .foot-links{display:flex;gap:18px;justify-content:center;margin-bottom:16px;flex-wrap:wrap;}
+
+  ::selection{background:rgba(99,102,241,0.35);}
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="wrap">
+    <div class="brand">
+      <img src="assets/icons/icon.svg" alt="">
+      <span>IsItDown</span>
+    </div>
+    <div class="links">
+      <a href="#what">What it does</a>
+      <a href="#how">How it works</a>
+      <a href="#why">Why</a>
+      <a href="#privacy">Privacy</a>
+      <a href="#install">Install</a>
+    </div>
+    <a class="btn" href="https://github.com/Jaswanth-dev-69/isitdown-extension" target="_blank" rel="noopener">View on GitHub</a>
+  </div>
+</nav>
+
+<main>
+  <header class="hero">
+    <div class="wrap">
+      <span class="kicker">🔍 Chrome Extension · Manifest V3</span>
+      <h1>Is it down for everyone,<br><span class="grad">or just you?</span></h1>
+      <p class="lead">
+        IsItDown is a one-click Chrome extension that diagnoses a broken website in seconds —
+        no backend, no account, no data leaving your browser.
+      </p>
+      <div class="hero-cta">
+        <a class="btn" href="https://github.com/Jaswanth-dev-69/isitdown-extension" target="_blank" rel="noopener">Get the extension</a>
+        <a class="btn btn-ghost" href="#how">See how it works</a>
+      </div>
+      <div class="badges">
+        <span class="pill">100% local</span>
+        <span class="pill">Zero dependencies</span>
+        <span class="pill">MIT Licensed</span>
+        <span class="pill">v1.0.0</span>
+      </div>
+
+      <div class="mock">
+        <div class="mock-head">
+          <img src="assets/icons/icon.svg" alt="">
+          <span>IsItDown</span>
+        </div>
+        <div class="mock-domain">
+          <span class="dot"></span>
+          <span>example.com</span>
+        </div>
+        <div class="mock-verdict">
+          <div class="icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+          </div>
+          <div class="label">All Good</div>
+          <div class="sub">Responded in 214ms</div>
+        </div>
+        <div class="mock-stats">
+          <div class="mock-stat"><div class="l">Response</div><div class="v">214ms</div></div>
+          <div class="mock-stat"><div class="l">HTTP</div><div class="v">200</div></div>
+          <div class="mock-stat"><div class="l">DNS</div><div class="v">OK</div></div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <section id="what">
+    <div class="wrap">
+      <div class="section-head">
+        <div class="eyebrow">What it does</div>
+        <h2>One click. A clear verdict.</h2>
+        <p>Click the toolbar icon on any site and IsItDown tells you exactly what's wrong — or confirms nothing is.</p>
+      </div>
+      <div class="grid">
+        <div class="card">
+          <div class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg></div>
+          <h3>Up / Down / Slow verdict</h3>
+          <p>A single, unambiguous status backed by HTTP code, response time, and DNS resolution — not a guess.</p>
+        </div>
+        <div class="card">
+          <div class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0zM12 9v4M12 17h.01"/></svg></div>
+          <h3>Passive slow-page badge</h3>
+          <p>Watches every page load in the background. A yellow <code>!</code> or red <code>?</code> badge appears with zero clicks.</p>
+        </div>
+        <div class="card">
+          <div class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 01-3.46 0"/></svg></div>
+          <h3>Recovery watcher</h3>
+          <p>When a site is down, opt to be notified the moment it comes back — polled quietly every 30 seconds.</p>
+        </div>
+        <div class="card">
+          <div class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></div>
+          <h3>Monitoring dashboard</h3>
+          <p>Track up to 10 sites at once. Background checks every 5 minutes, with a global badge if any go down.</p>
+        </div>
+        <div class="card">
+          <div class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4.93 4.93a10 10 0 000 14.14M19.07 4.93a10 10 0 010 14.14"/><circle cx="12" cy="12" r="3"/></svg></div>
+          <h3>Fix suggestions</h3>
+          <p>Context-aware troubleshooting for DNS failures, timeouts, and HTTP 401/403 — copyable in one click.</p>
+        </div>
+        <div class="card">
+          <div class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></svg></div>
+          <h3>History &amp; reports</h3>
+          <p>The last 50 checks, exportable to CSV, plus a one-click diagnostic report for support tickets.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="how">
+    <div class="wrap">
+      <div class="section-head">
+        <div class="eyebrow">How it does it</div>
+        <h2>A dual-check engine, running entirely in your browser</h2>
+        <p>No server to trust. The extension's background service worker does the diagnosis itself.</p>
+      </div>
+
+      <div class="flow">
+        <div class="flow-steps">
+          <div class="step">
+            <div class="num">1</div>
+            <div class="body">
+              <h4>You click "Check now"</h4>
+              <p>The popup reads the active tab's domain and sends it to the background service worker via <code>chrome.runtime.sendMessage</code>.</p>
+            </div>
+          </div>
+          <div class="step">
+            <div class="num">2</div>
+            <div class="body">
+              <h4>Two checks run in parallel</h4>
+              <p><b>HTTP probe</b> — a direct <code>HEAD</code>, falling back to <code>GET</code>, against the domain with an 8s timeout.
+              <b>DNS check</b> — a lookup against Google's public resolver (<code>dns.google/resolve</code>) to confirm the domain resolves at all.</p>
+            </div>
+          </div>
+          <div class="step">
+            <div class="num">3</div>
+            <div class="body">
+              <h4>The results are cross-referenced</h4>
+              <p>This is what separates IsItDown from a plain ping: if HTTP fails but DNS succeeds, the server itself is down. If both fail, it's likely your network or the domain is gone entirely.</p>
+            </div>
+          </div>
+          <div class="step">
+            <div class="num">4</div>
+            <div class="body">
+              <h4>A verdict is built and returned</h4>
+              <p>The popup renders the verdict card, the response-time / HTTP / DNS stats, and — if something's wrong — targeted fix suggestions. The result is saved to local history.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Condition</th><th>Verdict</th></tr></thead>
+          <tbody>
+            <tr><td>HTTP responds, status ≥ 500</td><td><span class="tag tag-down">Server Error</span></td></tr>
+            <tr><td>HTTP responds, took &gt;3000ms</td><td><span class="tag tag-slow">Degraded Performance</span></td></tr>
+            <tr><td>HTTP responds normally</td><td><span class="tag tag-up">All Good</span></td></tr>
+            <tr><td>HTTP fails, DNS resolves</td><td><span class="tag tag-down">Appears Down</span></td></tr>
+            <tr><td>HTTP fails, DNS also fails</td><td><span class="tag tag-down">Site Unreachable</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section id="why">
+    <div class="wrap">
+      <div class="section-head">
+        <div class="eyebrow">Why it exists</div>
+        <h2>The "is it just me?" moment, solved</h2>
+        <p>A site fails to load and you're left guessing: broken DNS? A dead server? A flaky VPN? Third-party outage-tracker sites are slow, ad-heavy, and can't see your local network conditions at all.</p>
+      </div>
+      <div class="why">
+        <div class="card">
+          <h3>Your own vantage point matters</h3>
+          <p>A third-party status page checks a site from its own servers — not from your network, behind your VPN, with your DNS. IsItDown probes from exactly where you are, so the diagnosis is actually about your situation.</p>
+        </div>
+        <div class="card">
+          <h3>Speed over searching</h3>
+          <p>No tab-switching to a downtime checker, no CAPTCHA, no ads. One click in the toolbar, an answer in seconds — while you're already looking at the broken page.</p>
+        </div>
+        <div class="card">
+          <h3>Diagnosis, not just status</h3>
+          <p>"Down" isn't enough. Knowing <i>why</i> — DNS failure vs. server error vs. timeout — points straight at the right fix instead of a shrug.</p>
+        </div>
+        <div class="card">
+          <h3>Built to stay out of the way</h3>
+          <p>The passive badge and monitor list work silently in the background, so the common case (everything's fine) costs you nothing.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="privacy">
+    <div class="wrap">
+      <div class="section-head">
+        <div class="eyebrow">Privacy &amp; permissions</div>
+        <h2>No backend. No accounts. No tracking.</h2>
+      </div>
+      <div class="privacy-box">
+        <div class="ic"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l8 4v6c0 5-3.5 9-8 10-4.5-1-8-5-8-10V6l8-4z"/></svg></div>
+        <div>
+          <h4>Everything runs on your machine</h4>
+          <p>
+            IsItDown never collects, transmits, or sells any personal data. The only external service it ever contacts is
+            <code>dns.google</code>, and only to verify DNS resolution for the site you're actively checking.
+            History, monitor lists, and settings live in <code>chrome.storage.local</code> — never leaving your browser.
+            Permissions (<code>storage</code>, <code>alarms</code>, <code>notifications</code>, <code>webNavigation</code>, <code>activeTab</code>, and host access)
+            exist solely to run checks, schedule background polling, and show recovery notifications.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="install">
+    <div class="wrap">
+      <div class="section-head">
+        <div class="eyebrow">Get started</div>
+        <h2>Install in under a minute</h2>
+        <p>No Chrome Web Store listing yet — load it straight from source.</p>
+      </div>
+      <div class="install-grid">
+        <div class="install-step"><div class="num">1</div><div><b>Clone the repo</b> — <code>git clone https://github.com/Jaswanth-dev-69/isitdown-extension.git</code></div></div>
+        <div class="install-step"><div class="num">2</div><div>Open <b>chrome://extensions</b> and enable <b>Developer mode</b></div></div>
+        <div class="install-step"><div class="num">3</div><div>Click <b>Load unpacked</b> and select the cloned <code>isitdown-extension</code> folder</div></div>
+        <div class="install-step"><div class="num">4</div><div>Pin the icon from the toolbar puzzle menu — you're ready to check any site</div></div>
+      </div>
+      <div class="hero-cta" style="margin-top:34px;">
+        <a class="btn" href="https://github.com/Jaswanth-dev-69/isitdown-extension" target="_blank" rel="noopener">Clone on GitHub</a>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <div class="foot-links">
+      <a href="https://github.com/Jaswanth-dev-69/isitdown-extension" target="_blank" rel="noopener">GitHub Repo</a>
+      <a href="https://github.com/Jaswanth-dev-69/isitdown-extension/issues" target="_blank" rel="noopener">Report an Issue</a>
+      <a href="https://github.com/Jaswanth-dev-69" target="_blank" rel="noopener">Author: Jaswanth</a>
+    </div>
+    IsItDown — Site Outage Checker · MIT License · Built with AI
+  </div>
+</footer>
+
+</body>
+</html>
